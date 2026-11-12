@@ -18,10 +18,3 @@ Demo-data indsættes automatisk ved første opstart (`app.seed-data=true`).
 
 ## Events
 Ingen (Catalog er kun synkron i diagrammet).
-
-## Docker
-```
-docker build -t bioflix-catalog-service .
-```
-GitHub Actions (`.github/workflows/docker-image.yml`) bygger billedet ved hver push og pusher det til Docker Hub
-som `<namespace>/bioflix-catalog-service:latest`, når secrets `DOCKERHUB_USERNAME` og `DOCKERHUB_TOKEN` er sat.
