@@ -1,85 +1,112 @@
 package bioflix.catalog.service;
 
-import bioflix.catalog.dto.ShowtimeDtos.ShowtimeRequest;
-import bioflix.catalog.dto.ShowtimeDtos.ShowtimeResponse;
+import bioflix.catalog.dto.HallResponse;
+import bioflix.catalog.dto.ShowtimeDetails;
+import bioflix.catalog.dto.ShowtimeRequest;
+import bioflix.catalog.dto.ShowtimeResponse;
 import bioflix.catalog.entity.Hall;
 import bioflix.catalog.entity.Movie;
+import bioflix.catalog.entity.SeatType;
 import bioflix.catalog.entity.Showtime;
+import bioflix.catalog.entity.ShowtimeStatus;
 import bioflix.catalog.exception.ConflictException;
 import bioflix.catalog.exception.NotFoundException;
+import bioflix.catalog.mapper.CatalogMapper;
 import bioflix.catalog.repository.ShowtimeRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.time.Instant;
-import java.time.LocalDate;
-import java.time.ZoneId;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 @Service
+@RequiredArgsConstructor
 public class ShowtimeService {
 
-    private static final ZoneId CINEMA_ZONE = ZoneId.of("Europe/Copenhagen");
-    private static final Duration CLEANING_BUFFER = Duration.ofMinutes(15);
+    /** Minutes of ads and cleaning added after the movie. */
+    private static final int BUFFER_MINUTES = 25;
+    private static final String CURRENCY = "DKK";
 
-    private final ShowtimeRepository showtimeRepository;
+    private final ShowtimeRepository showtimes;
     private final MovieService movieService;
     private final HallService hallService;
+    private final CatalogMapper mapper;
 
-    public ShowtimeService(ShowtimeRepository showtimeRepository, MovieService movieService, HallService hallService) {
-        this.showtimeRepository = showtimeRepository;
-        this.movieService = movieService;
-        this.hallService = hallService;
+    public List<ShowtimeResponse> listForMovie(String movieId) {
+        Movie movie = movieService.find(movieId);
+        return showtimes
+                .findByMovieIdAndStatusAndStartsAtAfterOrderByStartsAtAsc(
+                        movieId, ShowtimeStatus.SCHEDULED, Instant.now())
+                .stream()
+                .map(s -> mapper.toResponse(s, movie, hallService.find(s.getHallId())))
+                .toList();
     }
 
-    /** Upcoming showtimes for a movie. */
-    public List<ShowtimeResponse> getUpcomingForMovie(String movieId) {
-        return showtimeRepository.findByMovieIdAndStartTimeAfterOrderByStartTimeAsc(movieId, Instant.now())
-                .stream().map(this::toResponse).toList();
+    public ShowtimeResponse get(String id) {
+        Showtime showtime = find(id);
+        return toResponse(showtime);
     }
 
-    /** All showtimes on a given date (Danish time). */
-    public List<ShowtimeResponse> getForDate(LocalDate date) {
-        Instant from = date.atStartOfDay(CINEMA_ZONE).toInstant();
-        Instant to = date.plusDays(1).atStartOfDay(CINEMA_ZONE).toInstant();
-        return showtimeRepository.findByStartTimeBetweenOrderByStartTimeAsc(from, to)
-                .stream().map(this::toResponse).toList();
-    }
-
-    public ShowtimeResponse getById(String id) {
-        return toResponse(findOrThrow(id));
+    /** One call with everything Booking needs. Used by the gRPC endpoint. */
+    public ShowtimeDetails getDetails(String id) {
+        Showtime showtime = find(id);
+        Hall hall = hallService.find(showtime.getHallId());
+        Movie movie = movieService.find(showtime.getMovieId());
+        HallResponse hallResponse = mapper.toResponse(hall);
+        return new ShowtimeDetails(mapper.toResponse(showtime, movie, hall), hallResponse);
     }
 
     public ShowtimeResponse create(ShowtimeRequest request) {
-        Movie movie = movieService.findOrThrow(request.movieId());
-        Hall hall = hallService.findOrThrow(request.hallId());
+        Movie movie = movieService.find(request.movieId());
+        Hall hall = hallService.find(request.hallId());
+        validatePrices(request, hall);
 
-        Instant start = request.startTime();
-        Instant end = start.plus(Duration.ofMinutes(movie.getDurationMinutes())).plus(CLEANING_BUFFER);
+        Instant endsAt = request.startsAt()
+                .plus(Duration.ofMinutes((long) movie.getDurationMinutes() + BUFFER_MINUTES));
 
-        // Simple overlap check: no other showtime may start in the same hall while this one runs.
-        // (Does not catch a longer movie that started earlier – good enough for a start.)
-        if (!showtimeRepository.findByHallIdAndStartTimeBetween(hall.getId(), start, end).isEmpty()) {
-            throw new ConflictException("Hall " + hall.getName() + " is already booked in that time slot");
+        if (!showtimes.findOverlapping(hall.getId(), request.startsAt(), endsAt).isEmpty()) {
+            throw new ConflictException("Hall " + hall.getName() + " is already booked at that time");
         }
 
-        Showtime showtime = new Showtime(movie.getId(), hall.getId(), start, request.priceMinor(),
-                request.currency().toUpperCase());
-        return ShowtimeResponse.from(showtimeRepository.save(showtime), movie, hall);
+        Showtime saved = showtimes.save(Showtime.builder()
+                .movieId(movie.getId())
+                .hallId(hall.getId())
+                .startsAt(request.startsAt())
+                .endsAt(endsAt)
+                .format(request.format())
+                .language(request.language())
+                .subtitles(request.subtitles())
+                .prices(request.prices())
+                .currency(CURRENCY)
+                .status(ShowtimeStatus.SCHEDULED)
+                .build());
+        return mapper.toResponse(saved, movie, hall);
     }
 
-    public void delete(String id) {
-        showtimeRepository.delete(findOrThrow(id));
+    public ShowtimeResponse cancel(String id) {
+        Showtime showtime = find(id);
+        showtime.setStatus(ShowtimeStatus.CANCELLED);
+        return toResponse(showtimes.save(showtime));
     }
 
-    public Showtime findOrThrow(String id) {
-        return showtimeRepository.findById(id)
-                .orElseThrow(() -> new NotFoundException("Showtime " + id + " not found"));
+    private void validatePrices(ShowtimeRequest request, Hall hall) {
+        Set<SeatType> needed = new HashSet<>();
+        hall.getRows().forEach(row -> row.getSeats().forEach(seat -> needed.add(seat.getType())));
+        if (!request.prices().keySet().containsAll(needed)) {
+            throw new ConflictException("Prices are missing for seat types: " + needed);
+        }
     }
 
-    private ShowtimeResponse toResponse(Showtime showtime) {
-        Movie movie = movieService.findOrThrow(showtime.getMovieId());
-        Hall hall = hallService.findOrThrow(showtime.getHallId());
-        return ShowtimeResponse.from(showtime, movie, hall);
+    private ShowtimeResponse toResponse(Showtime s) {
+        return mapper.toResponse(s, movieService.find(s.getMovieId()), hallService.find(s.getHallId()));
+    }
+
+    private Showtime find(String id) {
+        return showtimes.findById(id).orElseThrow(() -> new NotFoundException("Showtime", id));
     }
 }

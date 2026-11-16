@@ -1,43 +1,72 @@
 package bioflix.catalog.entity;
 
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 import org.springframework.data.annotation.Id;
-import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
+import org.springframework.data.mongodb.core.mapping.Field;
 
-/**
- * A cinema hall with a simple rectangular seat layout:
- * rows A, B, C ... and seats 1..seatsPerRow (seat label e.g. "C7").
- */
+import java.util.List;
+
 @Document(collection = "halls")
+@Getter
+@Setter
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class Hall {
 
     @Id
     private String id;
 
-    @Indexed(unique = true)
+    @Field("name")
     private String name;
 
-    private int rows;
-    private int seatsPerRow;
+    @Field("cinema")
+    private CinemaInfo cinema;
 
-    public Hall() {
+    @Field("capacity")
+    private int capacity;
+
+    @Field("rows")
+    private List<SeatRow> rows;
+
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class CinemaInfo {
+        @Field("name")
+        private String name;
+
+        @Field("city")
+        private String city;
     }
 
-    public Hall(String name, int rows, int seatsPerRow) {
-        this.name = name;
-        this.rows = rows;
-        this.seatsPerRow = seatsPerRow;
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class SeatRow {
+        @Field("label")
+        private String label;
+
+        @Field("seats")
+        private List<Seat> seats;
     }
 
-    public int getCapacity() {
-        return rows * seatsPerRow;
-    }
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class Seat {
+        @Field("number")
+        private int number;
 
-    public String getId() { return id; }
-    public String getName() { return name; }
-    public void setName(String name) { this.name = name; }
-    public int getRows() { return rows; }
-    public void setRows(int rows) { this.rows = rows; }
-    public int getSeatsPerRow() { return seatsPerRow; }
-    public void setSeatsPerRow(int seatsPerRow) { this.seatsPerRow = seatsPerRow; }
+        @Field("type")
+        private SeatType type;
+    }
 }

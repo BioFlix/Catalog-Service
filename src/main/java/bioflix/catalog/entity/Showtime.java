@@ -1,50 +1,65 @@
 package bioflix.catalog.entity;
 
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 import org.springframework.data.annotation.Id;
-import org.springframework.data.mongodb.core.index.Indexed;
+import org.springframework.data.mongodb.core.index.CompoundIndex;
+import org.springframework.data.mongodb.core.index.CompoundIndexes;
 import org.springframework.data.mongodb.core.mapping.Document;
+import org.springframework.data.mongodb.core.mapping.Field;
+import org.springframework.data.mongodb.core.mapping.FieldType;
 
 import java.time.Instant;
+import java.util.Map;
 
 @Document(collection = "showtimes")
+@CompoundIndexes({
+        @CompoundIndex(name = "movie_start", def = "{'movieId': 1, 'startsAt': 1}"),
+        @CompoundIndex(name = "hall_start", def = "{'hallId': 1, 'startsAt': 1}")
+})
+@Getter
+@Setter
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class Showtime {
 
     @Id
     private String id;
 
-    @Indexed
+    /** Stored as a real ObjectId in Mongo, exposed as a String in Java. */
+    @Field(name = "movieId", targetType = FieldType.OBJECT_ID)
     private String movieId;
 
+    @Field(name = "hallId", targetType = FieldType.OBJECT_ID)
     private String hallId;
 
-    @Indexed
-    private Instant startTime;
+    /** Always UTC. Converted to Europe/Copenhagen only in the client. */
+    @Field("startsAt")
+    private Instant startsAt;
 
-    /** Price per seat in minor units (øre). Same unit Stripe uses. */
-    private long priceMinor;
+    @Field("endsAt")
+    private Instant endsAt;
 
-    private String currency = "DKK";
+    @Field("format")
+    private ShowFormat format;
 
-    public Showtime() {
-    }
+    @Field("language")
+    private String language;
 
-    public Showtime(String movieId, String hallId, Instant startTime, long priceMinor, String currency) {
-        this.movieId = movieId;
-        this.hallId = hallId;
-        this.startTime = startTime;
-        this.priceMinor = priceMinor;
-        this.currency = currency;
-    }
+    @Field("subtitles")
+    private String subtitles;
 
-    public String getId() { return id; }
-    public String getMovieId() { return movieId; }
-    public void setMovieId(String movieId) { this.movieId = movieId; }
-    public String getHallId() { return hallId; }
-    public void setHallId(String hallId) { this.hallId = hallId; }
-    public Instant getStartTime() { return startTime; }
-    public void setStartTime(Instant startTime) { this.startTime = startTime; }
-    public long getPriceMinor() { return priceMinor; }
-    public void setPriceMinor(long priceMinor) { this.priceMinor = priceMinor; }
-    public String getCurrency() { return currency; }
-    public void setCurrency(String currency) { this.currency = currency; }
+    /** Price per seat type in oere, e.g. STANDARD -> 13500 = 135 kr. */
+    @Field("prices")
+    private Map<SeatType, Integer> prices;
+
+    @Field("currency")
+    private String currency;
+
+    @Field("status")
+    private ShowtimeStatus status;
 }

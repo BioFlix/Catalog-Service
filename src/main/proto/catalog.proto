@@ -1,31 +1,41 @@
-// gRPC contract between catalog-service (server) and booking-service (client).
-// The SAME file must exist in both repos – if you change it, change it in both.
 syntax = "proto3";
 
-package bioflix.catalog;
+package bioflix.catalog.grpc;
 
-option java_package = "bioflix.grpc.catalog";
 option java_multiple_files = true;
-option java_outer_classname = "CatalogProto";
+option java_package = "bioflix.catalog.grpc";
 
+// Called by the Booking service when a booking is created and when the seat map is shown.
 service CatalogService {
-  // Booking asks for showtime details before it reserves seats.
-  rpc GetShowtime (GetShowtimeRequest) returns (ShowtimeDetails);
+  rpc GetShowtime (GetShowtimeRequest) returns (ShowtimeResponse);
 }
 
 message GetShowtimeRequest {
   string showtime_id = 1;
 }
 
-message ShowtimeDetails {
+message ShowtimeResponse {
   string showtime_id = 1;
   string movie_id = 2;
   string movie_title = 3;
   string hall_id = 4;
   string hall_name = 5;
-  int64 start_time_epoch_seconds = 6;
-  int64 price_minor = 7;      // price per seat in øre (minor units), e.g. 12500 = 125,00 kr
-  string currency = 8;        // e.g. "DKK"
-  int32 rows = 9;             // hall layout: rows A, B, C ...
-  int32 seats_per_row = 10;   // seats 1..seats_per_row
+  string cinema_name = 6;
+  string starts_at = 7;          // ISO-8601 UTC
+  string ends_at = 8;            // ISO-8601 UTC
+  string format = 9;
+  string status = 10;            // SCHEDULED | CANCELLED
+  string currency = 11;
+  map<string, int32> prices = 12; // seat type -> price in oere
+  repeated SeatRow rows = 13;
+}
+
+message SeatRow {
+  string label = 1;
+  repeated Seat seats = 2;
+}
+
+message Seat {
+  int32 number = 1;
+  string type = 2;               // STANDARD | VIP | WHEELCHAIR
 }
