@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: catalog-service
+  labels:
+    app: bioflix
+    service: catalog-service
+spec:
+  # Internal only: the gateway uses http (8082), Booking uses gRPC (9090),
+  # both by the name "catalog-service" inside the cluster.
+  type: ClusterIP
+  selector:
+    service: catalog-service
+  ports:
+    - name: http
+      port: 8082
+      targetPort: 8082
+    - name: grpc
+      port: 9090
+      targetPort: 9090

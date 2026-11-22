@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catalog-mongo
+  labels:
+    app: bioflix
+    service: catalog-mongo
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate   # single DB pod holding a volume: stop the old one before starting the new one
+  selector:
+    matchLabels:
+      service: catalog-mongo
+  template:
+    metadata:
+      labels:
+        app: bioflix
+        service: catalog-mongo
+    spec:
+      containers:
+        - name: mongo
+          image: mongo:7.0
+          ports:
+            - containerPort: 27017
+          volumeMounts:
+            - name: data
+              mountPath: /data/db
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: catalog-mongo-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: catalog-mongo-pvc
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 1Gi
