@@ -4,6 +4,7 @@ import bioflix.catalog.dto.MovieRequest;
 import bioflix.catalog.dto.MovieResponse;
 import bioflix.catalog.entity.Movie;
 import bioflix.catalog.entity.MovieStatus;
+import bioflix.catalog.exception.BusinessRuleException;
 import bioflix.catalog.exception.ConflictException;
 import bioflix.catalog.exception.NotFoundException;
 import bioflix.catalog.mapper.CatalogMapper;
@@ -11,6 +12,7 @@ import bioflix.catalog.repository.MovieRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -19,6 +21,7 @@ public class MovieService {
 
     private final MovieRepository movies;
     private final CatalogMapper mapper;
+    private final CatalogValidation validation;
 
     public List<MovieResponse> list(MovieStatus status) {
         List<Movie> result = status == null
@@ -38,6 +41,7 @@ public class MovieService {
     }
 
     public MovieResponse create(MovieRequest request) {
+        validate(request);
         if (movies.existsBySlug(request.slug())) {
             throw new ConflictException("Slug already in use: " + request.slug());
         }
@@ -46,6 +50,7 @@ public class MovieService {
 
     public MovieResponse update(String id, MovieRequest request) {
         Movie movie = find(id);
+        validate(request);
         if (!movie.getSlug().equals(request.slug()) && movies.existsBySlug(request.slug())) {
             throw new ConflictException("Slug already in use: " + request.slug());
         }
@@ -60,5 +65,13 @@ public class MovieService {
     /** Used by other services in this module, which need the entity. */
     Movie find(String id) {
         return movies.findById(id).orElseThrow(() -> new NotFoundException("Movie", id));
+    }
+
+    private void validate(MovieRequest request) {
+        List<String> errors = new ArrayList<>(validation.validateSlug(request.slug()));
+        errors.addAll(validation.validateDuration(request.durationMinutes()));
+        if (!errors.isEmpty()) {
+            throw new BusinessRuleException(String.join("; ", errors));
+        }
     }
 }

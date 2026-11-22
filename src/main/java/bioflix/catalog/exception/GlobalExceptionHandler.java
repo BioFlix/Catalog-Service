@@ -27,4 +27,9 @@ public class GlobalExceptionHandler {
                 .orElse("Invalid request");
         return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, detail);
     }
+
+    @ExceptionHandler(BusinessRuleException.class)
+    public ProblemDetail businessRule(BusinessRuleException e) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.UNPROCESSABLE_ENTITY, e.getMessage());
+    }
 }

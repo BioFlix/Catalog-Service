@@ -9,18 +9,16 @@ import bioflix.catalog.entity.Movie;
 import bioflix.catalog.entity.SeatType;
 import bioflix.catalog.entity.Showtime;
 import bioflix.catalog.entity.ShowtimeStatus;
+import bioflix.catalog.exception.BusinessRuleException;
 import bioflix.catalog.exception.ConflictException;
 import bioflix.catalog.exception.NotFoundException;
 import bioflix.catalog.mapper.CatalogMapper;
 import bioflix.catalog.repository.ShowtimeRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Service;
 
-import java.time.Duration;
 import java.time.Instant;
-import java.util.HashSet;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
 
@@ -28,14 +26,13 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class ShowtimeService {
 
-    /** Minutes of ads and cleaning added after the movie. */
-    private static final int BUFFER_MINUTES = 25;
     private static final String CURRENCY = "DKK";
 
     private final ShowtimeRepository showtimes;
     private final MovieService movieService;
     private final HallService hallService;
     private final CatalogMapper mapper;
+    private final CatalogValidation validation;
 
     public List<ShowtimeResponse> listForMovie(String movieId) {
         Movie movie = movieService.find(movieId);
@@ -66,8 +63,7 @@ public class ShowtimeService {
         Hall hall = hallService.find(request.hallId());
         validatePrices(request, hall);
 
-        Instant endsAt = request.startsAt()
-                .plus(Duration.ofMinutes((long) movie.getDurationMinutes() + BUFFER_MINUTES));
+        Instant endsAt = validation.calculateEnd(request.startsAt(), movie.getDurationMinutes());
 
         if (!showtimes.findOverlapping(hall.getId(), request.startsAt(), endsAt).isEmpty()) {
             throw new ConflictException("Hall " + hall.getName() + " is already booked at that time");
@@ -95,10 +91,12 @@ public class ShowtimeService {
     }
 
     private void validatePrices(ShowtimeRequest request, Hall hall) {
-        Set<SeatType> needed = new HashSet<>();
+        Set<SeatType> needed = EnumSet.noneOf(SeatType.class);
         hall.getRows().forEach(row -> row.getSeats().forEach(seat -> needed.add(seat.getType())));
-        if (!request.prices().keySet().containsAll(needed)) {
-            throw new ConflictException("Prices are missing for seat types: " + needed);
+
+        List<String> errors = validation.validatePrices(request.prices(), needed);
+        if (!errors.isEmpty()) {
+            throw new BusinessRuleException(String.join("; ", errors));
         }
     }
 
