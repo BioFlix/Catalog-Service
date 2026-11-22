@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catalog-service
+  labels:
+    app: bioflix
+    service: catalog-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      service: catalog-service
+  template:
+    metadata:
+      labels:
+        app: bioflix
+        service: catalog-service
+    spec:
+      containers:
+        - name: catalog-service
+          # Local cluster: your DockerHub image. For AKS use <ACR_NAME>.azurecr.io/catalog-service:latest instead.
+          image: tmil24/catalog-service:latest
+          ports:
+            - name: http
+              containerPort: 8082
+            - name: grpc
+              containerPort: 9090
+          env:
+            # Spring maps SPRING_MONGODB_URI to spring.mongodb.uri. Mongo runs in the cluster (see kubernetes/mongo).
+            - name: SPRING_MONGODB_URI
+              value: mongodb://catalog-mongo:27017/catalog_db
+            # Inserts demo movies/halls/showtimes if the database is empty
+            - name: APP_SEED_DATA
+              value: "true"
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8082
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8082
+            initialDelaySeconds: 45
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 768Mi
